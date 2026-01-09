@@ -132,3 +132,24 @@ sudo ./install.sh --run --install-agent-arcane \
     --arcane-main-ip 192.168.1.10 \
     --arcane-main-port 8080
 ```
+
+## 🔧 Post-instalación (importante)
+
+Al finalizar la instalación, es necesario ajustar los permisos del directorio de instalación para que el usuario actual pueda gestionar los archivos sin usar `sudo` constantemente.
+
+La ruta de instalación por defecto es:
+
+```text
+/opt/homelab
+```
+
+Si durante la instalación utilizaste una ruta diferente, sustitúyela en el comando siguiente.
+
+Ejecuta:
+
+```bash
+sudo chown $USER:$USER -R /opt/homelab
+```
+
+📌 **Nota**  
+Este paso debe ejecutarse una sola vez y es obligatorio para evitar problemas de permisos al usar o actualizar el stack.
