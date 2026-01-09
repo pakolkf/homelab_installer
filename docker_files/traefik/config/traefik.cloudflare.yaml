@@ -1,0 +1,109 @@
+################################################################
+# Global configuration
+################################################################
+
+global:
+  checknewversion: false
+  sendanonymoususage: false
+
+################################################################
+# API and dashboard configuration
+################################################################
+
+api:
+  insecure: false
+  dashboard: true
+  debug: false
+
+################################################################
+# Load dynamic configuration from .yaml files in a directory
+# - Routers
+# - Middleware
+# - Services
+################################################################
+
+providers:
+  file:
+    directory: /dynamic
+    watch: true
+
+################################################################
+# Certificate Resolvers
+################################################################
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@mi-dominio.es
+      storage: /ssl/prod/acme.json
+      caServer: https://acme-v02.api.letsencrypt.org/directory
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+  letsencrypt_staging:
+    acme:
+      email: admin@mi-dominio.es
+      storage: /ssl/staging/acme.json
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+      dnsChallenge:
+        provider: cloudflare
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+
+################################################################
+# EntryPoints configuration
+################################################################
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt_staging  # cambiar a letsencrypt en producción
+        domains:
+          - main: "mi-dominio.es"
+            sans:
+              - "*.mi-dominio.es"
+
+################################################################
+# Traefik logs configuration
+# - common: formato plano (para humanos)
+################################################################
+
+log:
+  filePath: "/var/log/traefik/traefik.log"
+  format: "common"
+#  format: "json"
+#  level: INFO
+  level: DEBUG
+
+################################################################
+# Access logs configuration
+################################################################
+
+accessLog:
+  filePath: "/var/log/traefik/traefik-access.log"
+  format: "json"
+  filters:
+    statusCodes:
+      - "200"
+      - "400-599"
+    retryAttempts: true
+    minDuration: "10ms"
+  bufferingSize: 0
+  fields:
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep

@@ -1,0 +1,14 @@
+services:
+  unbound:
+    image: klutchell/unbound
+    container_name: unbound
+    restart: unless-stopped
+    ports:
+      - 5335:53/tcp
+      - 5335:53/udp
+    volumes:
+      - ${DOCKER_BASE}/unbound/custom.conf.d:/etc/unbound/custom.conf.d
+      - ${DOCKER_BASE}/unbound/logs/unbound.log:/var/log/unbound.log
+      - ${DOCKER_BASE}/unbound/root/root.hints:/var/lib/unbound/root.hints
+      - ${DOCKER_BASE}/unbound/root/root.key:/var/lib/unbound/root.key
+      - ${DOCKER_BASE}/unbound/run:/run

@@ -1,0 +1,15 @@
+http:
+  routers:
+    adguard-home:
+      rule: "Host(`adguard.mi-dominio.es`)"
+      service: adguard-home
+      entryPoints:
+        - websecure
+      middlewares:
+        - secure-headers
+
+  services:
+    adguard-home:
+      loadBalancer:
+        servers:
+          - url: "http://localhost:8080"

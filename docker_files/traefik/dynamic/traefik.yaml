@@ -1,0 +1,9 @@
+http:
+  routers:
+    dashboard:
+      rule: "Host(`traefik.mi-dominio.es`)"
+      service: api@internal
+      entryPoints:
+        - websecure
+      middlewares:
+        - secure-headers

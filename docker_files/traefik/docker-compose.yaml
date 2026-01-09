@@ -1,0 +1,31 @@
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik
+    hostname: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${TZ}
+      PUID: ${PUID}
+      PGID: ${PGID}
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN}
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ${DOCKER_BASE}/traefik/traefik.yaml:/traefik.yaml:ro
+      - ${DOCKER_BASE}/traefik/dynamic:/dynamic:ro
+      - ${DOCKER_BASE}/traefik/ssl:/ssl
+      - ${DOCKER_BASE}/traefik/logs:/var/log/traefik
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    external: true
+    name: traefik

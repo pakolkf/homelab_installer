@@ -1,0 +1,26 @@
+services:
+  adguard-home:
+    image: adguard/adguardhome
+    container_name: adguard-home
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 853:853/tcp
+      - 8080:80/tcp
+      - 4433:443/tcp
+      - 3000:3000/tcp # Optional: interface for installation
+    volumes:
+      - ${DOCKER_BASE}/adguard-home/work:/opt/adguardhome/work
+      - ${DOCKER_BASE}/adguard-home/config:/opt/adguardhome/conf
+    restart: unless-stopped
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+    name: traefik

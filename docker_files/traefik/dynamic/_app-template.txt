@@ -1,0 +1,17 @@
+http:
+  routers:
+    APP_NAME:
+      rule: "Host(`APP_DOMAIN`)"
+      service: APP_NAME
+      entryPoints:
+        - websecure
+      middlewares:
+        - secure-headers
+
+  services:
+    APP_NAME:
+      loadBalancer:
+        servers:
+          - url: "APP_BACKEND_URL"
+        # 👇 SOLO si el backend usa HTTPS autofirmado
+        # serversTransport: insecureTransport

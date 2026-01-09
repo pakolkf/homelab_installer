@@ -1,0 +1,15 @@
+http:
+  routers:
+    arcane:
+      rule: "Host(`arcane.mi-dominio.es`)"
+      service: arcane
+      entryPoints:
+        - websecure
+      middlewares:
+        - secure-headers
+
+  services:
+    arcane:
+      loadBalancer:
+        servers:
+          - url: "http://localhost:3552"

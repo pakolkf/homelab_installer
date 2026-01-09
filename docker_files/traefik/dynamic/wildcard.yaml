@@ -1,0 +1,11 @@
+http:
+  routers:
+    wildcard:
+      rule: "HostRegexp(`{host:.+}`)"
+      service: noop@internal
+      tls:
+        certResolver: letsencrypt_staging
+      entryPoints:
+        - websecure
+      middlewares:
+        - secure-headers
