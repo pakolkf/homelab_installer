@@ -13,7 +13,6 @@ RUN=false
 ALL_PRIVACY=false
 ADGUARD=false
 UNBOUND=false
-DRY_RUN=false
 
 # Flags Traefik
 TRAEFIK_PROVIDER="cloudflare"
@@ -31,6 +30,11 @@ INSTALL_AGENT_ARCANE="false"
 AGENT_TOKEN=""
 ARCANE_MAIN_IP=""
 ARCANE_MAIN_PORT=""
+
+# Flags carpeta compartida Nas
+NAS_IP=""
+NAS_SHARE=""
+LOCAL_MOUNT=""
 
 DOCKER_BASE=""
 MACHINE_IP=$(hostname -I | awk '{print $1}')
@@ -58,15 +62,23 @@ IMPORTANTE:
 ===========================================================
   --run                                     Ejecuta la instalación (modo root)
   --env <production|development|test>       Entorno del homelab (por defecto: production)
+  --install-path <ruta>                     Ruta base de instalación (por defecto: /opt/homelab)
+  -h, --help                                Muestra esta ayuda
+
+===========================================================
+  OPCIONES ARCANE (SERVIDOR O AGENTE)
+===========================================================
   --install-agent-arcane                    Instala un agente Arcane en lugar del servidor principal
   --agent-token <token>                     Token del agente generado por el manager Arcane
   --arcane-main-ip <ip>                     IP del servidor manager Arcane
   --arcane-main-port <puerto>               Puerto del servidor manager Arcane
+
+===========================================================
+  OPCIONES DE PRIVACIDAD
+===========================================================
   --all-privacy                             Instala AdGuard + Unbound
   --adguard                                 Instala solo AdGuard
   --unbound                                 Instala solo Unbound
-  --install-path <ruta>                     Ruta base de instalación (por defecto: /opt/homelab)
-  -h, --help                                Muestra esta ayuda
 
 Restricciones:
   --all-privacy no puede combinarse con --adguard ni --unbound
@@ -81,6 +93,18 @@ Restricciones:
   --traefik-password <password>             Password para dashboard
   --dashboard-auth                          Habilita autenticación básica en el dashboard
   --dashboard-lan-only                      Restringe acceso al dashboard solo a la LAN
+
+===========================================================
+  OPCIONES DE MONTAJE NAS (NFS)
+===========================================================
+  --mount-nas-share                         Activa el montaje de una ruta compartida NFS
+  --ip-nas <IP>                             IP del NAS
+  --route-nas <ruta NFS>                    Ruta exportada por el NAS (ej: /volume1/multimedia)
+  --route-local <ruta local>                Punto de montaje local (ej: /mnt/nas/multimedia)
+
+Notas:
+  - Si usas --mount-nas-share, debes indicar los tres parámetros:
+        --ip-nas, --route-nas y --route-local
 
 ===========================================================
   EJEMPLOS DE USO
@@ -130,6 +154,12 @@ sudo $0 --run --install-agent-arcane \\
     --agent-token TOKEN123 \\
     --arcane-main-ip 192.168.1.10 \\
     --arcane-main-port 8080
+
+# 8. Montar un recurso NFS del NAS
+sudo $0 --run --mount-nas-share \\
+    --ip-nas 192.168.1.50 \\
+    --route-nas /volume1/multimedia \\
+    --route-local /mnt/nas/multimedia
 
 EOF
 }
@@ -407,7 +437,6 @@ check_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --run) RUN=true ;;
-            --dry-run) DRY_RUN=true ;;
             --env)
                 ENVIRONMENT="$2"
                 shift
@@ -498,6 +527,21 @@ check_args() {
                 ;;
             --dashboard-auth) DASHBOARD_AUTH=true ;;
             --dashboard-lan-only) DASHBOARD_LAN_ONLY=true ;;
+            --mount-nas-share)
+                MOUNT_NAS="true"
+                ;;
+            --ip-nas)
+              NAS_IP="$2"
+              shift
+              ;;
+            --route-nas)
+              NAS_SHARE="$2"
+              shift
+              ;;
+            --route-local)
+              LOCAL_MOUNT="$2"
+              shift
+              ;;
             -h|--help)
                 show_help
                 exit 0
@@ -544,6 +588,17 @@ check_args() {
         exit 1
     fi
 
+    if [[ "$MOUNT_NAS" == "true" ]]; then
+        if [[ -z "$NAS_IP" || -z "$NAS_SHARE" || -z "$LOCAL_MOUNT" ]]; then 
+            echo "ERROR: Para montar una ruta compartida debes especificar:"
+            echo "  --ip-nas <IP>"
+            echo "  --route-nas <ruta NFS>"
+            echo "  --route-local <ruta local>"
+            exit 1
+        fi
+        return
+    fi
+
     # Validar dominio
     if [[ -z "$TRAEFIK_DOMAIN" ]]; then
         echo "Error: --traefik-domain es obligatorio"
@@ -566,8 +621,7 @@ check_args() {
     if ! [[ "$TRAEFIK_EMAIL" =~ ^[^@]+@[^@]+\.[^@]+$ ]]; then
         echo "Error: email inválido"
         exit 1
-    fi
-
+    fi 
 }
 
 purge_docker() {
@@ -1255,6 +1309,80 @@ EOF
     done
 }
 
+instalar_nfs_mount() {
+    local NAS_IP=""
+    local NAS_SHARE=""
+    local LOCAL_MOUNT=""
+    local FSTAB_OPTIONS="rw,sync,hard,intr,nfsvers=4"
+
+    while [[ "$#" -gt 0 ]]; do 
+      case $1 in 
+        --ip-nas)
+          NAS_IP="$2"
+          shift
+          ;;
+        --route-nas)
+          NAS_SHARE="$2"
+          shift
+          ;;
+        --route-local)
+          LOCAL_MOUNT="$2"
+          shift
+          ;;
+        *)
+          echo "Parámetro desconocido: $1" 
+          exit 1 
+          ;; 
+      esac 
+      shift
+    done
+
+    echo "=== Instalando soporte NFS ==="
+    apt update
+    apt install -y nfs-common
+
+    echo "=== Creando punto de montaje local ==="
+    mkdir -p "$LOCAL_MOUNT"
+
+    echo "=== Añadiendo entrada a /etc/fstab si no existe ==="
+    local FSTAB_LINE="$NAS_IP:$NAS_SHARE   $LOCAL_MOUNT   nfs   $FSTAB_OPTIONS   0   0"
+    grep -qxF "$FSTAB_LINE" /etc/fstab || echo "$FSTAB_LINE" | tee -a /etc/fstab
+
+    echo "=== Creando script de montaje ==="
+    tee /usr/local/bin/mount_nas.sh > /dev/null <<EOF
+#!/bin/bash
+mkdir -p "$LOCAL_MOUNT"
+mount -t nfs -o $FSTAB_OPTIONS $NAS_IP:$NAS_SHARE $LOCAL_MOUNT
+EOF
+
+    chmod +x /usr/local/bin/mount_nas.sh
+
+    echo "=== Creando servicio systemd ==="
+    tee /etc/systemd/system/montar-nas.service > /dev/null <<EOF
+[Unit]
+Description=Montar NAS por NFS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mount_nas.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    echo "=== Activando servicio ==="
+    systemctl daemon-reload
+    systemctl enable montar-nas.service
+
+    echo "=== Montando NAS ==="
+    mount -a
+
+    echo "=== Montaje completado: $LOCAL_MOUNT ==="
+}
+
 maybe_reexec_as_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "Se necesitan privilegios de administrador. Re-ejecutando con sudo..."
@@ -1343,6 +1471,10 @@ main() {
         $( [[ -n "$TRAEFIK_PASSWORD" ]] && echo "--password $TRAEFIK_PASSWORD" )
 
     install_arcane --domain "$TRAEFIK_DOMAIN" --ip "$MACHINE_IP"
+
+    if [[ "$MOUNT_NAS" == "true" ]]; then
+      instalar_nfs_mount --ip-nas "$NAS_IP" --route-nas "$NAS_SHARE" --route-local "$LOCAL_MOUNT"
+    fi
 
     config_cron_auto_update
 
