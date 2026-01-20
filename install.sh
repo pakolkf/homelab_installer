@@ -231,6 +231,32 @@ config_cron_auto_update() {
   chown root:root /var/log || true
 }
 
+config_cron_fix_permissions() {
+  echo
+  echo "-> Configurando corrección automática de permisos (${INSTALL_PATH})..."
+
+  DOCKER_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
+  local cron_line="0 3 * * * /bin/chown ${DOCKER_USER}:${DOCKER_USER} -R ${INSTALL_PATH} >> ${INSTALL_LOG} 2>&1"
+
+  # Obtener crontab actual
+  local current_cron
+  current_cron="$(crontab -l 2>/dev/null || true)"
+
+  if ! echo "$current_cron" | grep -Fq "$cron_line"; then
+    {
+      echo "$current_cron"
+      echo "$cron_line"
+    } | crontab -
+    echo "Tarea de permisos añadida al crontab."
+  else
+    echo "La tarea de permisos ya existe en el crontab."
+  fi
+
+  # Ejecutar inmediatamente al final de la instalación
+  echo "Aplicando permisos ahora mismo..."
+  chown "${DOCKER_USER}:${DOCKER_USER}" -R "${INSTALL_PATH}"
+}
+
 disable_ip_v6() {
   echo
   echo "-> Deshabilitando IPv6 a nivel de sistema..."
@@ -605,10 +631,15 @@ EOF
 
   echo "Configurando grupo 'docker'..."
   groupadd docker >>"${INSTALL_LOG}" 2>&1 || true
-  usermod -aG docker "$USER" >>"${INSTALL_LOG}" 2>&1 || true
+
+  DOCKER_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
+  usermod -aG docker "$DOCKER_USER" >>"${INSTALL_LOG}" 2>&1 || true
 
   echo "Verificando instalación de Docker..."
   docker --version >>"${INSTALL_LOG}" 2>&1 || echo "Docker no se instaló correctamente."
+
+  echo "Asegurando que la interfaz docker0 esté activa..."
+  ip link set docker0 up
 
   echo "Verificando si Docker está corriendo..."
   if systemctl is-active --quiet docker; then
@@ -1257,8 +1288,6 @@ main() {
 
     update_system
 
-    config_cron_auto_update
-
     if ! create_mem_swap; then
         echo "Advertencia: no se pudo crear swap, continuando..."
     fi
@@ -1314,6 +1343,10 @@ main() {
         $( [[ -n "$TRAEFIK_PASSWORD" ]] && echo "--password $TRAEFIK_PASSWORD" )
 
     install_arcane --domain "$TRAEFIK_DOMAIN" --ip "$MACHINE_IP"
+
+    config_cron_auto_update
+
+    config_cron_fix_permissions
 
     arcane_start
     
