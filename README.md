@@ -49,7 +49,7 @@ Si se usa `--install-agent-arcane`, el instalador desplegará:
 | Flag | Descripción |
 |------|-------------|
 | `--run` | Ejecuta la instalación |
-| `--env` <production|development|test>` | Entorno del homelab |
+| `--env <production\|development\|test>` | Entorno del homelab |
 | `--install-agent-arcane` | Instala un agente Arcane |
 | `--agent-token <token>` | Token del agente Arcane |
 | `--arcane-main-ip <ip>` | IP del servidor Arcane |
