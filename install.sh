@@ -13,7 +13,7 @@ RUN=false
 ALL_PRIVACY=false
 ADGUARD=false
 UNBOUND=false
-DRY_RUN=false
+BLUETOOTH=false
 
 # Flags Traefik
 TRAEFIK_PROVIDER="cloudflare"
@@ -66,6 +66,7 @@ IMPORTANTE:
   --adguard                                 Instala solo AdGuard
   --unbound                                 Instala solo Unbound
   --install-path <ruta>                     Ruta base de instalación (por defecto: /opt/homelab)
+  --with-bluetooth                          Instala bluetooth para Home Assistant
   -h, --help                                Muestra esta ayuda
 
 Restricciones:
@@ -407,7 +408,6 @@ check_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --run) RUN=true ;;
-            --dry-run) DRY_RUN=true ;;
             --env)
                 ENVIRONMENT="$2"
                 shift
@@ -498,6 +498,7 @@ check_args() {
                 ;;
             --dashboard-auth) DASHBOARD_AUTH=true ;;
             --dashboard-lan-only) DASHBOARD_LAN_ONLY=true ;;
+            --with-bluetooth) BLUETOOTH=true ;;
             -h|--help)
                 show_help
                 exit 0
@@ -1255,6 +1256,56 @@ EOF
     done
 }
 
+install_bluetooth_homeassistant() {
+  ############################################
+  # Bluetooth / BlueZ (Home Assistant support)
+  ############################################
+  echo
+  echo "-> Configurando Bluetooth (BlueZ)"
+  echo
+
+  # Comprobación de hardware Bluetooth (kernel)
+  if [ ! -d /sys/class/bluetooth ] || ! ls /sys/class/bluetooth/hci* >/dev/null 2>&1; then
+      echo "No se ha detectado hardware Bluetooth, se omite configuración"
+      return 0
+  fi
+
+  echo "Hardware Bluetooth detectado"
+
+  # Instalar BlueZ si no está instalado
+  if ! dpkg -s bluez >/dev/null 2>&1; then
+      echo "Instalando BlueZ"
+      apt update -y
+      apt install -y bluez
+  else
+      echo "BlueZ ya está instalado"
+  fi
+
+  # Habilitar servicio Bluetooth
+  if ! systemctl is-enabled bluetooth >/dev/null 2>&1; then
+      echo "Habilitando servicio bluetooth"
+      systemctl enable bluetooth
+  else
+      echo "Servicio bluetooth ya habilitado"
+  fi
+
+  # Iniciar servicio Bluetooth
+  if ! systemctl is-active bluetooth >/dev/null 2>&1; then
+      echo "Iniciando servicio bluetooth"
+      systemctl start bluetooth
+  else
+      echo "Servicio bluetooth ya está activo"
+  fi
+
+  # Comprobación del adaptador
+  if command -v bluetoothctl >/dev/null 2>&1; then
+      echo "Verificando adaptador Bluetooth"
+      bluetoothctl show || echo "⚠️  No se pudo leer el adaptador Bluetooth"
+  else
+      echo "⚠️  bluetoothctl no está disponible"
+  fi
+}
+
 maybe_reexec_as_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "Se necesitan privilegios de administrador. Re-ejecutando con sudo..."
@@ -1343,6 +1394,10 @@ main() {
         $( [[ -n "$TRAEFIK_PASSWORD" ]] && echo "--password $TRAEFIK_PASSWORD" )
 
     install_arcane --domain "$TRAEFIK_DOMAIN" --ip "$MACHINE_IP"
+
+    if [[ "$BLUETOOTH" == "true" ]]; then
+        install_bluetooth_homeassistant
+    fi
 
     config_cron_auto_update
 
